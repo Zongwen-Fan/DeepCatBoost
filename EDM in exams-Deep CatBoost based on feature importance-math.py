@@ -151,7 +151,7 @@ def gridSearch4CatBoost(X,y,n_estimators, max_depth):
     return cbc
 #     return model.fit(X,y).predict(testX)
 
-def KFoldForward(data, ind,n_estimators, max_depth, n_fold=10):
+def KFoldForward(data, n_estimators, max_depth, n_fold=10):
 #     num = len(data)
     diff = int(len(data)/n_fold)
     results = np.zeros((n_fold, 4))
@@ -164,6 +164,11 @@ def KFoldForward(data, ind,n_estimators, max_depth, n_fold=10):
         train = deepcopy(data)
         train = np.delete(train, range(begin, end),axis=0)
         X_train, y_train = train[:,:-1], train[:,-1]
+        
+        model = RandomForestRegressor().fit(X_train, y_train)
+        importances = model.feature_importances_
+        ind = np.argsort(importances)
+        
         X_test, y = test[:,:-1], test[:,-1]
 #         predictY = model.fit(X_train, y_train).predict(X_test)
         predictY = deepCatBoostForward(train, test,importances,ind,n_estimators, max_depth)
@@ -186,10 +191,7 @@ for i in n_estimators:
     for j in max_depth:
         for epoch in range(epochs):
             data = shuffle(data)
-            model = RandomForestRegressor().fit(data[:,:-1], data[:,-1])
-            importances = model.feature_importances_
-            ind = np.argsort(importances)
-            result = KFoldForward(data, ind,n_estimators=i, max_depth=j)
+            result = KFoldForward(data,n_estimators=i, max_depth=j)
             cats[epoch,:] = np.mean(result, axis=0)
         print(np.mean(cats, axis=0))
 print(time()-t1)
@@ -206,7 +208,7 @@ for i in n_estimators:
             model = RandomForestRegressor().fit(data[:,:-1], data[:,-1])
             importances = model.feature_importances_
             ind = np.argsort(importances)
-            result = KFoldForward(data, ind,n_estimators=i, max_depth=j)
+            result = KFoldForward(data, n_estimators=i, max_depth=j)
             cats[epoch,:] = np.mean(result, axis=0)
         print(np.mean(cats, axis=0))
 
