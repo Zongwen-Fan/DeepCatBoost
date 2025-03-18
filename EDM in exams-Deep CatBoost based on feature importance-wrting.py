@@ -73,39 +73,6 @@ data = shuffle(data)
 from sklearn.model_selection import GridSearchCV
 
 
-def deepCatBoostBackward(train, test,importances,ind,n_estimators, max_depth):
-    s = 0
-    inds = []
-    inds2 = []
-    inds3 = []
-    for i in ind:
-        s = s + importances[i]
-        inds.append(i)
-#     70% importance for the first layer
-        if (s > 0.9):
-            model = gridSearch4CatBoost(train[:,inds], train[:,-1],n_estimators, max_depth)
-            predY = model.fit(train[:,inds], train[:,-1]).predict(train[:,inds])
-            predY2 = model.predict(test[:,inds])
-        else:
-            inds2.append(i)
-#     20% importance for the second layer
-            if (s > 0.95):
-                tempTrain = np.array([train[:,inds2],predY])
-                tempTest = np.array([test[:,inds2],predY2])
-                model = gridSearch4CatBoost(tempTrain, train[:,-1],n_estimators, max_depth)
-                predYY = model.fit(tempTrain, train[:,-1]).predict(tempTrain)
-                predYY2 = model.predict(tempTest)
-            else:
-                inds3.append(i)
-#     10% importance for the third layer
-                if (s == 1):
-                    tempTrain = np.array([train[:,inds3],predY,predYY])
-                    tempTest = np.array([test[:,inds3],predY2,predYY2])
-                    model = gridSearch4CatBoost(tempTrain, train[:,-1],n_estimators, max_depth)
-#                     predY = model.fit(tempTrain, train[:,-1]).predict(tempTrain)
-                    predY2 = model.predict(tempTest)
-    return predY2
-
 def deepCatBoostForward(train, test,importances,ind,n_estimators, max_depth):
 #     ind = ind[::-1]
     s = 0
@@ -113,31 +80,47 @@ def deepCatBoostForward(train, test,importances,ind,n_estimators, max_depth):
     inds2 = []
     inds3 = []
     for i in ind:
-        s = s + importances[i]
-        inds.append(i)
-#     10% importance for the first layer
-        if (s > 0.05):
-            model = gridSearch4CatBoost(train[:,inds], train[:,-1],n_estimators, max_depth)
-            predY = model.fit(train[:,inds], train[:,-1]).predict(train[:,inds])
-            predY2 = model.predict(test[:,inds])
-        else:
+        s += importances[i]
+        if s <= 0.05:
+            inds.append(i)
+        elif s <= 0.1:
             inds2.append(i)
-#     20% importance for the second layer
-            if (s > 0.1):
-                tempTrain = np.array([train[:,inds2],predY])
-                tempTest = np.array([test[:,inds2],predY2])
-                model = gridSearch4CatBoost(tempTrain, train[:,-1],n_estimators, max_depth)
-                predYY = model.fit(tempTrain, train[:,-1]).predict(tempTrain)
-                predYY2 = model.predict(tempTest)
-            else:
-                inds3.append(i)
-#     10% importance for the third layer
-                if (s == 1):
-                    tempTrain = np.array([train[:,inds3],predY,predYY])
-                    tempTest = np.array([test[:,inds3],predY2,predYY2])
-                    model = gridSearch4CatBoost(tempTrain, train[:,-1],n_estimators, max_depth)
-#                     predY = model.fit(tempTrain, train[:,-1]).predict(tempTrain)
-                    predY2 = model.predict(tempTest)
+        else:
+            inds3.append(i)
+
+    # First layer
+    if len(inds) > 0:
+        model = gridSearch4CatBoost(train[:, inds], train[:, -1], n_estimators, max_depth)
+        model.fit(train[:, inds], train[:, -1])
+        predY = model.predict(train[:, inds])
+        predY2 = model.predict(test[:, inds])
+
+    # Second layer
+    if len(inds2) > 0:
+        if len(inds) == 0 and len(inds2) == 1:
+            tempTrain = train[:, inds2].reshape(-1, 1)
+            tempTest = test[:, inds2].reshape(-1, 1)
+        else:
+            tempTrain = np.hstack((train[:, inds2], predY.reshape(-1, 1)))
+            tempTest = np.hstack((test[:, inds2], predY2.reshape(-1, 1)))
+
+        model = gridSearch4CatBoost(tempTrain, train[:, -1], n_estimators, max_depth)
+        model.fit(tempTrain, train[:, -1])
+        predYY = model.predict(tempTrain)
+        predYY2 = model.predict(tempTest)
+
+    # Third layer
+    if len(inds3) > 0:
+        if len(inds2) <= 1 and len(inds3) == 0:
+            tempTrain = np.hstack((train[:, inds3], predY.reshape(-1, 1), predYY.reshape(-1, 1)))
+            tempTest = np.hstack((test[:, inds3], predY2.reshape(-1, 1), predYY2.reshape(-1, 1)))
+        else:
+            tempTrain = train[:, inds3]
+            tempTest = test[:, inds3]
+
+        model = gridSearch4CatBoost(tempTrain, train[:, -1], n_estimators, max_depth)
+        model.fit(tempTrain, train[:, -1])
+        predY2 = model.predict(tempTest)
     return predY2
 
 def gridSearch4CatBoost(X,y,n_estimators, max_depth):
@@ -200,7 +183,7 @@ print(time()-t1)
 n_estimators  = [500]
 max_depth = [4]
 epochs=20
-cats = np.zeros((epochs,4))
+catsf = np.zeros((epochs,4))
 for i in n_estimators:
     for j in max_depth:
         for epoch in range(epochs):
@@ -209,8 +192,8 @@ for i in n_estimators:
             importances = model.feature_importances_
             ind = np.argsort(importances)
             result = KFoldForward(data, n_estimators=i, max_depth=j)
-            cats[epoch,:] = np.mean(result, axis=0)
-        print(np.mean(cats, axis=0))
+            catsf[epoch,:] = np.mean(result, axis=0)
+        print(np.mean(catsf, axis=0))
 
 
 print(mlps.std(axis=0))
